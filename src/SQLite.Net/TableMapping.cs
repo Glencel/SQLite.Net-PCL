@@ -36,20 +36,25 @@ namespace SQLite.Net
         private Column[] _insertColumns;
 
         [PublicAPI]
-        public TableMapping(Type type, IEnumerable<PropertyInfo> properties, CreateFlags createFlags = CreateFlags.None)
+		public TableMapping(Type type, IEnumerable<PropertyInfo> properties, CreateFlags createFlags = CreateFlags.None, IColumnInformationProvider infoProvider = null)
         {
+			if (infoProvider == null)
+			{
+				infoProvider = new DefaultColumnInformationProvider ();
+			}
+
             MappedType = type;
 
-            var tableAttr = type.GetTypeInfo().CustomAttributes.FirstOrDefault(data => data.AttributeType == typeof (TableAttribute));
+            var tableAttr = type.GetTypeInfo().GetCustomAttributes<TableAttribute>().FirstOrDefault();
 
-            TableName = tableAttr != null ? (string) tableAttr.ConstructorArguments.FirstOrDefault().Value : MappedType.Name;
+            TableName = tableAttr != null ?  tableAttr.Name : MappedType.Name;
 
             var props = properties;
 
             var cols = new List<Column>();
             foreach (var p in props)
             {
-                var ignore = p.IsDefined(typeof (IgnoreAttribute), true);
+				var ignore = infoProvider.IsIgnored (p);
 
                 if (p.CanWrite && !ignore)
                 {
@@ -134,13 +139,15 @@ namespace SQLite.Net
             private readonly PropertyInfo _prop;
 
             [PublicAPI]
-            public Column(PropertyInfo prop, CreateFlags createFlags = CreateFlags.None)
+			public Column(PropertyInfo prop, CreateFlags createFlags = CreateFlags.None, IColumnInformationProvider infoProvider = null)
             {
-                var colAttr =
-                    prop.GetCustomAttributes<ColumnAttribute>(true).FirstOrDefault();
+				if (infoProvider == null)
+				{
+					infoProvider = new DefaultColumnInformationProvider();
+				}
 
                 _prop = prop;
-                Name = colAttr == null ? prop.Name : colAttr.Name;
+				Name = infoProvider.GetColumnName(prop);
                 //If this type is Nullable<T> then Nullable.GetUnderlyingType returns the T, otherwise it returns null, so get the actual type instead
                 ColumnType = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
                 Collation = Orm.Collation(prop);
